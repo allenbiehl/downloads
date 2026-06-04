@@ -1,0 +1,60 @@
+services:
+  devpi-proxy:
+    image: nginx:alpine
+    container_name: devpi-proxy
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    volumes:
+      - ./resources/nginx/nginx-secure.conf:/etc/nginx/nginx.conf:ro
+      - /Users/evanbiehl/Projects/common/certs/local.lab.crt:/etc/nginx/certs/tls.crt
+      - /Users/evanbiehl/Projects/common/certs/local.lab.key:/etc/nginx/certs/tls.key
+      - /Users/evanbiehl/Projects/common/certs/default-RootCA.crt:/etc/nginx/certs/ca.crt
+    profiles:
+      - devpi-proxy
+
+  devpi-server:
+    image: local/service:latest
+    environment:
+      - DEVPI_HOST=0.0.0.0
+      - DEVPI_PORT=3141
+      - DEVPI_ROLE=primary
+      - DEVPI_RESTRICT_MODIFY=root
+      - DEVPI_ROOT_PASSWORD=password
+      - DEVPI_RESTRICT_MODIFY=root
+
+      - DEVPI_CLIENT_GUEST_USERNAME=guest
+      - DEVPI_CLIENT_GUEST_PASSWORD=password
+      - DEVPI_CLIENT_CICD_USERNAME=cicd
+      - DEVPI_CLIENT_CICD_PASSWORD=password
+      - DEVPI_CLIENT_MIRROR_USERNAME=mirror
+      - DEVPI_CLIENT_MIRROR_PASSWORD=password
+
+      - DEVPI_INDEX_MIRROR_1_NAME=gitlab
+      - DEVPI_INDEX_MIRROR_1_OWNER=mirror
+      - DEVPI_INDEX_MIRROR_1_TYPE=mirror
+      - DEVPI_INDEX_MIRROR_1_MIRROR_URL=https://pypi.org/simple/
+      - DEVPI_INDEX_MIRROR_1_VOLATILE=False
+
+      - DEVPI_INDEX_MIRROR_2_NAME=community
+      - DEVPI_INDEX_MIRROR_2_OWNER=mirror
+      - DEVPI_INDEX_MIRROR_2_TYPE=mirror
+      - DEVPI_INDEX_MIRROR_2_MIRROR_URL=https://test.pypi.org/simple/
+      - DEVPI_INDEX_MIRROR_2_VOLATILE=False
+
+      - DEVPI_INDEX_STABLE_NAME=stable
+      - DEVPI_INDEX_STABLE_OWNER=root
+      - DEVPI_INDEX_STAGLE_TYPE=stage
+      - DEVPI_INDEX_STABLE_BASES=mirror/gitlab,mirror/community
+      - DEVPI_INDEX_STABLE_VOLATILE=False
+
+      - DEVPISERVER_SERVERDIR=/opt/devpi/server
+      - DEVPISERVER_INDEXER_BACKEND=null
+
+      # Configure via nginx header as setting this using the env causes errors
+      # when trying to connect the client to the server from within the container
+      # - DEVPISERVER_OUTSIDE_URL=https://devpi.local.lab
+    volumes:
+      - ./.data:/opt/devpi/server
+    profiles:
+      - devpi-server
