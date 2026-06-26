@@ -1,0 +1,109 @@
+services:
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+    container_name: minio
+    ports:
+      - "9020:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+      SPARK_DRIVER_OPTS: -verbose:class
+      SPARK_EXECUTOR_OPTS: -verbose:class
+    volumes:
+      - ./resources/minio/config/entrypoint.sh:/entrypoint.sh:ro
+      - ./resources/minio/config/docker-entrypoint-init.d:/docker-entrypoint-init.d:ro
+    entrypoint: ["/entrypoint.sh"]
+
+  spark-master:
+    build: ./cluster
+    container_name: spark-master
+    ports:
+      - "8080:8080" # Spark Master web UI
+      - "7077:7077" # Spark Master port
+      - "4040:4040" # Spark application UI
+    environment:
+      SPARK_MODE: master
+      SPARK_PUBLIC_DNS: localhost
+      SPARK_DRIVER_OPTS: -verbose:class
+      SPARK_EXECUTOR_OPTS: -verbose:class
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    volumes:
+      # - spark-data:/opt/spark/work-dir
+      - ./resources/spark/data:/opt/spark/work-dir/data
+
+  spark-worker-1:
+    build: ./cluster
+    container_name: spark-worker-1
+    ports:
+      - "8081:8081"
+    environment:
+      SPARK_MODE: worker
+      SPARK_PUBLIC_DNS: localhost
+      SPARK_WORKER_WEBUI_PORT: 8081
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_CORES: 2
+      SPARK_DRIVER_OPTS: -verbose:class
+      SPARK_EXECUTOR_OPTS: -verbose:class
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+    volumes:
+      - ./resources/spark/data:/opt/spark/work-dir/data
+    depends_on:
+      - spark-master
+
+  spark-worker-2:
+    build: ./cluster
+    container_name: spark-worker-2
+    ports:
+      - "8082:8082"
+    environment:
+      SPARK_MODE: worker
+      SPARK_PUBLIC_DNS: localhost
+      SPARK_WORKER_WEBUI_PORT: 8082
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_CORES: 2
+      SPARK_DRIVER_OPTS: -verbose:class
+      SPARK_EXECUTOR_OPTS: -verbose:class
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+    volumes:
+      - ./resources/spark/data:/opt/spark/work-dir/data
+    depends_on:
+      - spark-master
+
+  spark-worker-3:
+    build: ./cluster
+    container_name: spark-worker-3
+    ports:
+      - "8083:8083"
+    environment:
+      SPARK_MODE: worker
+      SPARK_PUBLIC_DNS: localhost
+      SPARK_WORKER_WEBUI_PORT: 8083
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_CORES: 2
+      SPARK_DRIVER_OPTS: -verbose:class
+      SPARK_EXECUTOR_OPTS: -verbose:class
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+    volumes:
+      - ./resources/spark/data:/opt/spark/work-dir/data
+    depends_on:
+      - spark-master
+
+  spark-submit-client:
+    build: ./client
+    container_name: spark-submit-client
+    environment:
+      SPARK_MODE: client
+    working_dir: /opt/spark-jobs
+    command: tail -f /dev/null
+    volumes:
+      - ./resources/spark/data:/opt/spark/work-dir/data
+      - ./jobs:/opt/spark-jobs
+    depends_on:
+      - spark-master

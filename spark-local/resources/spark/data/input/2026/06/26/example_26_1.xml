@@ -1,0 +1,14 @@
+<events>
+    <event>
+        <name>Event 8</name>
+        <event_date>2026-06-26</event_date>
+    </event>
+    <event>
+        <name>Event 9</name>
+        <event_date>2026-06-26</event_date>
+    </event>
+    <event>
+        <name>Event 10</name>
+        <event_date>2026-06-27</event_date>
+    </event>         
+</events>

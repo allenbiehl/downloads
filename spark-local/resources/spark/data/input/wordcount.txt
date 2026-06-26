@@ -1,0 +1,1 @@
+Print statements executed inside transformations (e.g., map, foreach) on distributed worker nodes will not appear in the main driver logs or the standard Spark UI. Because Spark is highly distributed, these outputs go to individual Executor stdout/stderr logs rather than the central Driver UI.
