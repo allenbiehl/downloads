@@ -1,0 +1,44 @@
+plugins {
+    id 'java'
+}
+
+group = 'cdet.kafka.connect.transforms'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        // Upgraded language version to Java 21 LTS
+        languageVersion = JavaLanguageVersion.of(21) 
+    }
+}
+
+dependencies {
+    // Core Connect API library provided at runtime by your Kafka workers
+    compileOnly 'org.apache.kafka:connect-api:4.3.1'
+    
+    // Makes Kafka Connect classes available to your local unit tests
+    testImplementation 'org.apache.kafka:connect-api:4.3.1'
+    
+    // JUnit 5 Dependencies for Unit Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+
+    // FIX: Provides the engine launcher required by Java 21 / Gradle 8+ environments
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'    
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+jar {
+    archiveFileName = "cdet-kafka-connect-transforms-${version}.jar"
+}

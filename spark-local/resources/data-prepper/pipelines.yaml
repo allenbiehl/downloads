@@ -1,0 +1,76 @@
+version: 2
+kafka-to-opensearch-pipeline:
+  workers: 4
+  delay: "5000"
+  source:
+    kafka:
+      bootstrap_servers:
+        - "kafka:9092"
+      topics:
+        - name: "my-log-topic"
+          group_id: "data-prepper-consumer-group"
+          key_mode: "include_as_metadata"
+          serde_format: json
+      encryption:
+        type: "none"
+
+  buffer:
+    bounded_blocking:
+      buffer_size: 10240
+      batch_size: 256
+
+  processor:
+    - add_entries:
+        entries:
+          - metadata_key: "year_month"
+            value_expression: 'substringBeforeLast(/event_time, "-")'
+    # - date:
+    #     match:
+    #       - key: event_time
+    #         patterns: ["yyyy-MM-dd"]
+    #     source_timezone: "UTC"
+    #     destination: "year_month"
+    #     output_format: yyyy-MM
+    # - add_entries:
+    #     entries:
+    #       - metadata_key: "year_month"
+    #         value_expression: "/year_month"
+    # - delete_entries:
+    #     with_keys: ["year_month"]
+
+  sink:
+    - stdout:
+    - opensearch:
+        hosts:
+          ["https://opensearch-node-1:9200", "https://opensearch-node-2:9200"]
+        username: "admin"
+        password: "YourSecurePassword123!"
+        index: 'events-${getMetadata("kafka_topic")}-${getMetadata("year_month")}'
+        normalize_index: true
+        document_id: '${getMetadata("kafka_key")}'
+        insecure: true
+
+dlq_pipeline:
+  sink:
+    - opensearch:
+        hosts:
+          ["https://opensearch-node-1:9200", "https://opensearch-node-2:9200"]
+        username: "admin"
+        password: "YourSecurePassword123!"
+        index: "events-errors"
+        normalize_index: true
+        insecure: true
+    # - s3:
+    #     max_retries: 1
+    #     bucket: errors
+    #     # object_key:
+    #     #   path_prefix: my-logs/%{yyyy}/%{MM}/%{dd}/
+    #     threshold:
+    #       event_count: 1
+    #       maximum_size: 50mb
+    #       event_collect_timeout: 15s
+    #     codec:
+    #       ndjson:
+    #     # buffer_type: in_memory
+    #     aws:
+    #       region: "us-east-1"

@@ -1,0 +1,54 @@
+# apiVersion: kafka.strimzi.io/v1beta2
+# kind: KafkaConnect
+# metadata:
+#   name: cdet-connect-cluster
+#   namespace: kafka
+#   annotations:
+#     # Forces Strimzi to automatically initiate a rolling upgrade if configurations shift
+#     strimzi.io/use-connector-resources: "true"
+# spec:
+#   version: 3.4.0
+#   # Scales your cluster horizontally across 3 separate pods/nodes
+#   replicas: 3
+#   bootstrapServers: kafka-cluster-kafka-bootstrap.kafka.svc:9092
+  
+#   # Structural configuration isolates plugins properly
+#   config:
+#     group.id: cdet-kubernetes-connect-cluster
+#     key.converter: org.apache.kafka.connect.storage.StringConverter
+#     value.converter: org.apache.kafka.connect.json.JsonConverter
+#     value.converter.schemas.enable: false
+#     # High-availability replica rules for shared metadata state storage
+#     config.storage.replication.factor: 3
+#     offset.storage.replication.factor: 3
+#     status.storage.replication.factor: 3
+
+#   # Automates artifact inclusions securely without managing separate Docker layers
+#   build:
+#     output:
+#       type: docker
+#       image: ://your-private-registry.com
+#       pushSecret: registry-credentials-secret
+#     plugins:
+#       - name: aiven-opensearch-connector
+#         artifacts:
+#           - type: tgz
+#             url: https://github.com
+#       - name: cdet-custom-transforms
+#         artifacts:
+#           - type: jar
+#             url: https://your-internal-maven-repo.com
+
+#   # Guarantees that Kubernetes spreads your pods evenly across separate physical nodes
+#   template:
+#     pod:
+#       affinity:
+#         podAntiAffinity:
+#           requiredDuringSchedulingIgnoredDuringExecution:
+#             - labelSelector:
+#                 matchExpressions:
+#                   - key: strimzi.io/name
+#                     operator: In
+#                     values:
+#                       - cdet-connect-cluster-connect
+#               topologyKey: "kubernetes.io/hostname"

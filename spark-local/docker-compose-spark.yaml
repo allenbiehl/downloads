@@ -15,8 +15,41 @@ services:
       - ./resources/minio/config/docker-entrypoint-init.d:/docker-entrypoint-init.d:ro
     entrypoint: ["/entrypoint.sh"]
 
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      # Configure KRaft role as both broker and controller
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+
+      # Define listeners for inside the docker network and outside (localhost)
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+
+      # Required cluster configuration
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "9080:8080"
+    depends_on:
+      - kafka
+    environment:
+      DYNAMIC_CONFIG_ENABLED: "true"
+      KAFKA_CLUSTERS_0_NAME: "local-cluster"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+
   spark-master:
-    build: ./cluster
+    build: ./containers/cluster
     container_name: spark-master
     ports:
       - "8080:8080" # Spark Master web UI
@@ -33,7 +66,7 @@ services:
       - ./resources/spark/data:/opt/spark/work-dir/data
 
   spark-worker-1:
-    build: ./cluster
+    build: ./containers/cluster
     container_name: spark-worker-1
     ports:
       - "8081:8081"
@@ -54,7 +87,7 @@ services:
       - spark-master
 
   spark-worker-2:
-    build: ./cluster
+    build: ./containers/cluster
     container_name: spark-worker-2
     ports:
       - "8082:8082"
@@ -75,7 +108,7 @@ services:
       - spark-master
 
   spark-worker-3:
-    build: ./cluster
+    build: ./containers/cluster
     container_name: spark-worker-3
     ports:
       - "8083:8083"
@@ -96,7 +129,7 @@ services:
       - spark-master
 
   spark-submit-client:
-    build: ./client
+    build: ./containers/client
     container_name: spark-submit-client
     environment:
       SPARK_MODE: client

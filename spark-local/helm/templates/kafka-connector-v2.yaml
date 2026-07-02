@@ -1,0 +1,32 @@
+{{- range .Values.pipelines }}
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnector
+metadata:
+  name: os-sink-{{ .name }}
+  namespace: {{ $.Values.namespace | default "kafka" }}
+  labels:
+    strimzi.io/cluster: {{ $.Values.connectClusterName }}
+spec:
+  class: io.aiven.kafka.connect.opensearch.OpensearchSinkConnector
+  tasksMax: {{ .tasksMax | default 3 }}
+  config:
+    topics: {{ .sourceTopic | quote }}
+    connection.url: {{ $.Values.opensearch.url | quote }}
+    connection.username: {{ $.Values.opensearch.username | quote }}
+    connection.password: {{ $.Values.opensearch.password | quote }}
+    
+    # Injects your universal Java custom transformation artifact automatically
+    transforms: "customDateParser"
+    transforms.customDateParser.type: "cdet.kafka.connect.transforms.TimestampConverter"
+    transforms.customDateParser.date.field: {{ .dateField | default "event_time" | quote }}
+    transforms.customDateParser.date.formats: "ISO, yyyy-MM-dd HH:mm:ss, yyyy-MM-dd"
+    
+    # Standard production resiliency parameters across all pipelines
+    errors.tolerance: "all"
+    errors.deadletterqueue.topic.name: "dlq-{{ .name }}"
+    errors.deadletterqueue.topic.replication.factor: 3
+    errors.deadletterqueue.context.headers.enable: true
+    errors.retry.delay.max.ms: 5000
+    errors.retry.timeout: 15000
+---
+{{- end }}

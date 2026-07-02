@@ -12,7 +12,7 @@ DRIVER_HOST = "spark-submit-client"
 
 SPARK_JARS = ",".join([
     "/opt/spark/jars/hadoop-aws-3.3.4.jar",
-    "/opt/spark/jars/aws-java-sdk-bundle-1.11.1026.jar",
+    "/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
     "/opt/spark/jars/spark-xml_2.12-0.18.0.jar"
 ])
 

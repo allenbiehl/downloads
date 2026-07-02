@@ -1,0 +1,29 @@
+namespace: kafka
+connectClusterName: cdet-connect-cluster
+
+opensearch:
+  url: "https://opensearch-node-1:9200"
+  username: "admin"
+  password: "YourSecurePassword123!"
+
+# Define dozens of pipelines here cleanly in a single configuration inventory
+pipelines:
+  - name: user-clicks
+    sourceTopic: telemetry.user.clicks
+    tasksMax: 5
+    dateField: event_time
+
+  - name: payment-transactions
+    sourceTopic: core.billing.payments
+    tasksMax: 2
+    dateField: created_at
+
+  - name: system-logs
+    sourceTopic: infrastructure.server.logs
+    tasksMax: 10
+    dateField: log_timestamp
+
+  - name: inventory-updates
+    sourceTopic: warehouse.stock.events
+    tasksMax: 3
+    dateField: event_time

@@ -26,6 +26,7 @@ create_alias myminio
 
 mc mb myminio/input
 mc mb myminio/output
+mc mb myminio/errors
 
 
 

@@ -1,0 +1,30 @@
+# apiVersion: kafka.strimzi.io/v1beta2
+# kind: KafkaConnector
+# metadata:
+#   name: opensearch-sink-connector
+#   namespace: kafka
+#   labels:
+#     # Tells Strimzi which KafkaConnect cluster should load this configuration
+#     strimzi.io/cluster: cdet-connect-cluster
+# spec:
+#   class: io.aiven.kafka.connect.opensearch.OpensearchSinkConnector
+#   tasksMax: 3
+#   config:
+#     topics: "your-kafka-topic"
+#     connection.url: "https://opensearch-node-1:9200"
+#     connection.username: "admin"
+#     connection.password: "YourSecurePassword123!"
+    
+#     # Custom compilation logic that resolved your mixed timestamps securely
+#     transforms: "customDateParser"
+#     transforms.customDateParser.type: "cdet.kafka.connect.transforms.TimestampConverter"
+#     transforms.customDateParser.date.field: "event_time"
+#     transforms.customDateParser.date.formats: "ISO, yyyy-MM-dd HH:mm:ss, yyyy-MM-dd"
+    
+#     # Resilient Single Message dead-letter rules
+#     errors.tolerance: "all"
+#     errors.deadletterqueue.topic.name: "your-dlq-error-topic-name"
+#     errors.deadletterqueue.topic.replication.factor: 3
+#     errors.deadletterqueue.context.headers.enable: true
+#     errors.retry.delay.max.ms: 5000
+#     errors.retry.timeout: 15000

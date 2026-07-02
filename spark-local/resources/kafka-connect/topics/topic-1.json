@@ -1,0 +1,36 @@
+{
+  "name": "opensearch-sink-connector",
+  "config": {
+    "connector.class": "io.aiven.kafka.connect.opensearch.OpensearchSinkConnector",
+    "tasks.max": "1",
+    "topics": "your-kafka-topic",
+    "connection.url": "https://opensearch-node-1:9200",
+    "connection.username": "admin",
+    "connection.password": "YourSecurePassword123!",
+    "connection.ssl.endpoint.identification.algorithm": "",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "key.ignore": "false",
+    "key.ignore.id.strategy": "record.key",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "schema.ignore": "true",
+    "consumer.override.auto.offset.reset": "earliest",
+
+    "transforms": "customDateParser,finalizeIndexName",
+
+    "transforms.customDateParser.type": "cdet.kafka.connect.transforms.TimestampConverter",
+    "transforms.customDateParser.date.field": "event_time",
+    "transforms.customDateParser.date.formats": "ISO, yyyy-MM-dd HH:mm:ss, yyyy-MM-dd",
+
+    "transforms.finalizeIndexName.type": "org.apache.kafka.connect.transforms.TimestampRouter",
+    "transforms.finalizeIndexName.topic.format": "events-${topic}-${timestamp}",
+    "transforms.finalizeIndexName.timestamp.format": "yyyy-MM",
+
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "errors-dlq",
+    "errors.deadletterqueue.topic.replication.factor": 1,
+    "errors.deadletterqueue.context.headers.enable": true,
+    "errors.retry.delay.max.ms": "5000",
+    "errors.retry.timeout": "15000"
+  }
+}

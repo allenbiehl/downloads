@@ -1,0 +1,143 @@
+services:
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+    container_name: minio
+    ports:
+      - "80:8000"
+      - "9020:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+      SPARK_DRIVER_OPTS: -verbose:class
+      SPARK_EXECUTOR_OPTS: -verbose:class
+    volumes:
+      - ./resources/minio/config/entrypoint.sh:/entrypoint.sh:ro
+      - ./resources/minio/config/docker-entrypoint-init.d:/docker-entrypoint-init.d:ro
+    entrypoint: ["/entrypoint.sh"]
+    networks:
+      - pipeline-net
+
+  opensearch-node-1:
+    image: opensearchproject/opensearch:latest
+    container_name: opensearch-node-1
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node-1
+      - discovery.seed_hosts=opensearch-node-2
+      - cluster.initial_cluster_manager_nodes=opensearch-node-1,opensearch-node-2
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=YourSecurePassword123!
+      - "DISABLE_INSTALL_DEMO_CONFIG=false"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - 9200:9200
+    networks:
+      - pipeline-net
+
+  opensearch-node-2:
+    image: opensearchproject/opensearch:latest
+    container_name: opensearch-node-2
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node-2
+      - discovery.seed_hosts=opensearch-node-1
+      - cluster.initial_cluster_manager_nodes=opensearch-node-1,opensearch-node-2
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=YourSecurePassword123!
+      - "DISABLE_INSTALL_DEMO_CONFIG=false"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - pipeline-net
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:latest
+    container_name: opensearch-dashboards
+    ports:
+      - 5601:5601
+    environment:
+      OPENSEARCH_HOSTS: '["https://opensearch-node-1:9200","https://opensearch-node-2:9200"]'
+      OPENSEARCH_USERNAME: "admin"
+      OPENSEARCH_PASSWORD: "YourSecurePassword123!"
+      OPENSEARCH_SSL_VERIFICATIONMODE: "none"
+    networks:
+      - pipeline-net
+
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - 9094:9094
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
+    networks:
+      - pipeline-net
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "9080:8080"
+    depends_on:
+      - kafka
+    environment:
+      DYNAMIC_CONFIG_ENABLED: "true"
+      KAFKA_CLUSTERS_0_NAME: "local-cluster"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+    networks:
+      - pipeline-net
+
+  data-prepper:
+    image: opensearchproject/data-prepper:latest
+    container_name: data-prepper
+    environment:
+      # AWS_ENDPOINT_URL_S3: http://minio:9000
+      # # AWS_ENDPOINT_URL: http://minio:9000
+      # AWS_ACCESS_KEY_ID: admin
+      # AWS_SECRET_ACCESS_KEY: password
+      # AWS_REGION: us-east-1
+      # AWS_S3_FORCE_PATH_STYLE: "true"
+      # AWS_USE_PATH_STYLE_ENDPOINT: "true"
+      AWS_SHARED_CREDENTIALS_FILE: /usr/share/data-prepper/config/.aws/config
+      AWS_CONFIG_FILE: /usr/share/data-prepper/config/.aws/config
+      AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+      AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+      AWS_PAYLOAD_SIGNING_ENABLED: "false"
+      #_JAVA_OPTIONS: "-Dorg.apache.commons.logging.Log=org.apache.commons.logging.impl.SimpleLog -Dorg.apache.commons.logging.simplelog.showdatetime=true -Dorg.apache.commons.logging.simplelog.log.org.apache.http.wire=DEBUG -Dorg.apache.commons.logging.simplelog.log.org.apache.http.impl.conn=DEBUG"
+      #_JAVA_OPTIONS: "-Dlogging.level.software.amazon.awssdk.request=DEBUG -Dlogging.level.software.amazon.awssdk.http=DEBUG"
+      #JAVA_OPTS: "-Dlogging.level.software.amazon.awssdk.request=DEBUG -Dlogging.level.software.amazon.awssdk.http=DEBUG"
+    volumes:
+      - ./resources/data-prepper/pipelines.yaml:/usr/share/data-prepper/pipelines/pipelines.yaml:ro
+      - ./resources/data-prepper/.aws/config:/usr/share/data-prepper/config/.aws/config:ro
+      # - ./resources/data-prepper/log4j2-rolling.properties:/usr/share/data-prepper/config/log4j2-rolling.properties:ro
+      # - ./resources/data-prepper/data-prepper-config.yaml:/usr/share/data-prepper/config/data-prepper-config.yaml:ro
+    depends_on:
+      - opensearch-node-1
+      - opensearch-node-2
+      - kafka
+    networks:
+      - pipeline-net
+
+networks:
+  pipeline-net:
+    driver: bridge
