@@ -1,0 +1,43 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.yourcompany.s3.interceptor'
+version = '4.0.3'
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        // Spark 4.0.0 natively targets and runs optimal bytecode on Java 17 or 21
+        languageVersion = JavaLanguageVersion.of(17) 
+    }
+}
+
+dependencies {
+    // 1. Spark 4.0.0 Core Compilation APIs
+    compileOnly 'org.apache.spark:spark-core_2.13:4.0.3'
+    compileOnly 'org.apache.spark:spark-sql_2.13:4.0.3'
+
+    // 2. Hadoop 3.4.0 Infrastructure Modules
+    compileOnly 'org.apache.hadoop:hadoop-aws:3.4.0'
+    compileOnly 'org.apache.hadoop:hadoop-common:3.4.0'
+
+    // 3. AWS SDK v2 Bill of Materials & Modules (Matching Hadoop 3.4.0 requirements)
+    implementation platform('software.amazon.awssdk:bom:2.23.19') 
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:bundle' // This is the modern v2 bundle if needed
+
+    // CRITICAL FIX: Add this line to pull in ExecutionAttributeKey and structural interfaces
+    implementation 'software.amazon.awssdk:sdk-core'     
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('jar') {
+    archiveFileName = "app-spark-common-${version}.jar"
+}

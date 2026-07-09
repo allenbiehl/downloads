@@ -16,7 +16,7 @@ https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.1026/aws-j
 1. Start cluster
 
 ```bash
-docker compose up
+docker compose -f docker-compose-spark.yaml --profile backend-services up
 ```
 
 2. Execute job
@@ -30,7 +30,7 @@ docker exec -it spark-submit-client python3 simple.py
 1. Start cluster
 
 ```bash
-docker compose up
+docker compose -f docker-compose-spark.yaml --profile backend-services up
 ```
 
 2. Execute job
@@ -44,7 +44,7 @@ docker exec -it spark-submit-client python3 wordcount.py
 1. Start cluster
 
 ```bash
-docker compose up
+docker compose -f docker-compose-spark.yaml --profile backend-services up
 ```
 
 2. Copy input files to minio
@@ -63,7 +63,13 @@ docker exec -it spark-submit-client python3 xml_s3_to_parquet_s3.py
 1. Start cluster
 
 ```bash
-docker compose up
+docker compose -f docker-compose-spark.yaml --profile backend-services up
+```
+
+1. Start cluster
+
+```bash
+scripts/dev/start_spark_service.sh
 ```
 
 2. Copy input files to minio
@@ -81,7 +87,7 @@ docker exec -it spark-submit-client python3 json_s3_to_parquet_s3.py
 1. Start cluster
 
 ```bash
-docker compose up
+docker compose -f docker-compose-spark.yaml --profile backend-services up
 ```
 
 2. Execute job
@@ -311,40 +317,9 @@ central-pipeline:
  docker compose -f docker-compose-kc.yaml up
 ```
 
-2. Verify plugin installation
+2. Configuring connector
 
-```bash
-curl -s http://localhost:8083/connector-plugins | jq
-```
-
-```json
-[
-  {
-    "class": "io.aiven.kafka.connect.opensearch.OpensearchSinkConnector",
-    "type": "sink",
-    "version": "3.1.1"
-  },
-  {
-    "class": "org.apache.kafka.connect.mirror.MirrorCheckpointConnector",
-    "type": "source",
-    "version": "8.2.2-ccs"
-  },
-  {
-    "class": "org.apache.kafka.connect.mirror.MirrorHeartbeatConnector",
-    "type": "source",
-    "version": "8.2.2-ccs"
-  },
-  {
-    "class": "org.apache.kafka.connect.mirror.MirrorSourceConnector",
-    "type": "source",
-    "version": "8.2.2-ccs"
-  }
-]
-```
-
-3. Configuring connector
-
-1. Create connector
+2.1. Create connector
 
 ```bash
 DATA=$(cat ./resources/kafka-connect/topics/topic-1.json)
@@ -353,7 +328,7 @@ curl -X POST http://localhost:8083/connectors \
   --data "${DATA}"
 ```
 
-2. Update connector
+2.2. Update connector
 
 ```bash
 DATA=$(cat ./resources/kafka-connect/topics/topic-1.json | jq -c '.config')
@@ -404,3 +379,21 @@ cp ./plugins/cdet-kafka-connect-transforms/build/libs/cdet-kafka-connect-transfo
 rm -rf ./plugins/cdet-kafka-connect-transforms/.gradle
 rm -rf ./plugins/cdet-kafka-connect-transforms/build
 ```
+
+# automatically delete multi part uploads not committed after a period of time
+
+The Solution: Configure an Object Lifecycle PolicyModern data lakes solve this problem by establishing a bucket-level rule that tells the MinIO or S3 cluster storage nodes to scan the tracking ledger and automatically delete any multipart upload session that has been abandoned for more than a set number of days.Method 1: Using the MinIO Client CLI (mc)You can apply a lifecycle policy to your target bucket using the official MinIO command-line tool. Run the following command to automatically purge any abandoned multipart uploads after 7 days:bash# 1. Alias your local unencrypted MinIO deployment cluster
+mc alias set myminio http://localhost:9000 minioadmin minioadmin
+
+# 2. Add an automatic lifecycle rule to target incomplete multipart uploads
+mc ilm rule add myminio/production-data-lake --abort-incomplete-multipart-days 7
+Use code with caution.Method 2: Injecting a Standard S3 XML Lifecycle RuleIf you prefer to configure your buckets programmatically inside an infrastructure-as-code script or a pre-flight automation hook, you can pass a standard S3 lifecycle configuration XML block.The explicit specification schema layout required to automate this cleanup looks like this:xml<LifecycleConfiguration>
+    <Rule>
+        <ID>PurgeAbandonedMultipartUploads</ID>
+        <Status>Enabled</Status>
+        <Prefix></Prefix> <!-- Applies to all folders and keys inside the bucket -->
+        <AbortIncompleteMultipartUpload>
+            <DaysAfterInitiation>7</DaysAfterInitiation> <!-- Deletes parts after 7 days -->
+        </AbortIncompleteMultipartUpload>
+    </Rule>
+</LifecycleConfiguration>

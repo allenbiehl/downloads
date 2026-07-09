@@ -12,8 +12,8 @@ services:
       SPARK_DRIVER_OPTS: -verbose:class
       SPARK_EXECUTOR_OPTS: -verbose:class
     volumes:
-      - ./resources/minio/config/entrypoint.sh:/entrypoint.sh:ro
-      - ./resources/minio/config/docker-entrypoint-init.d:/docker-entrypoint-init.d:ro
+      - ./services/minio/resources/config/entrypoint.sh:/entrypoint.sh:ro
+      - ./services/minio/resources/config/docker-entrypoint-init.d:/docker-entrypoint-init.d:ro
     entrypoint: ["/entrypoint.sh"]
     networks:
       pipeline-net:
@@ -112,7 +112,7 @@ services:
       - pipeline-net
 
   kafka-connect:
-    build: ./containers/kc
+    build: ./services/kafka-connect
     container_name: kafka-connect
     depends_on:
       - kafka

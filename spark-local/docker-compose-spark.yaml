@@ -11,9 +11,12 @@ services:
       SPARK_DRIVER_OPTS: -verbose:class
       SPARK_EXECUTOR_OPTS: -verbose:class
     volumes:
-      - ./resources/minio/config/entrypoint.sh:/entrypoint.sh:ro
-      - ./resources/minio/config/docker-entrypoint-init.d:/docker-entrypoint-init.d:ro
+      - ./services/minio/resources/config/entrypoint.sh:/entrypoint.sh:ro
+      - ./services/minio/resources/config/docker-entrypoint-init.d:/docker-entrypoint-init.d:ro
     entrypoint: ["/entrypoint.sh"]
+    profiles:
+      - backend
+      - all
 
   kafka:
     image: apache/kafka:latest
@@ -35,6 +38,9 @@ services:
       # Required cluster configuration
       KAFKA_LOG_DIRS: "/var/lib/kafka/data"
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    profiles:
+      - backend
+      - all
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -47,9 +53,12 @@ services:
       DYNAMIC_CONFIG_ENABLED: "true"
       KAFKA_CLUSTERS_0_NAME: "local-cluster"
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+    profiles:
+      - backend
+      - all
 
   spark-master:
-    build: ./containers/cluster
+    build: ./services/spark
     container_name: spark-master
     ports:
       - "8080:8080" # Spark Master web UI
@@ -58,15 +67,15 @@ services:
     environment:
       SPARK_MODE: master
       SPARK_PUBLIC_DNS: localhost
-      SPARK_DRIVER_OPTS: -verbose:class
-      SPARK_EXECUTOR_OPTS: -verbose:class
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     volumes:
-      # - spark-data:/opt/spark/work-dir
-      - ./resources/spark/data:/opt/spark/work-dir/data
+      - ./services/spark/resources/data:/opt/spark/work-dir/data
+    profiles:
+      - spark
+      - all
 
   spark-worker-1:
-    build: ./containers/cluster
+    build: ./services/spark
     container_name: spark-worker-1
     ports:
       - "8081:8081"
@@ -76,18 +85,19 @@ services:
       SPARK_WORKER_WEBUI_PORT: 8081
       SPARK_WORKER_MEMORY: 2g
       SPARK_WORKER_CORES: 2
-      SPARK_DRIVER_OPTS: -verbose:class
-      SPARK_EXECUTOR_OPTS: -verbose:class
     command: >
       /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
       spark://spark-master:7077
     volumes:
-      - ./resources/spark/data:/opt/spark/work-dir/data
+      - ./services/spark/resources/data:/opt/spark/work-dir/data
     depends_on:
       - spark-master
+    profiles:
+      - spark
+      - all
 
   spark-worker-2:
-    build: ./containers/cluster
+    build: ./services/spark
     container_name: spark-worker-2
     ports:
       - "8082:8082"
@@ -97,18 +107,19 @@ services:
       SPARK_WORKER_WEBUI_PORT: 8082
       SPARK_WORKER_MEMORY: 2g
       SPARK_WORKER_CORES: 2
-      SPARK_DRIVER_OPTS: -verbose:class
-      SPARK_EXECUTOR_OPTS: -verbose:class
     command: >
       /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
       spark://spark-master:7077
     volumes:
-      - ./resources/spark/data:/opt/spark/work-dir/data
+      - ./services/spark/resources/data:/opt/spark/work-dir/data
     depends_on:
       - spark-master
+    profiles:
+      - spark
+      - all
 
   spark-worker-3:
-    build: ./containers/cluster
+    build: ./services/spark
     container_name: spark-worker-3
     ports:
       - "8083:8083"
@@ -118,25 +129,31 @@ services:
       SPARK_WORKER_WEBUI_PORT: 8083
       SPARK_WORKER_MEMORY: 2g
       SPARK_WORKER_CORES: 2
-      SPARK_DRIVER_OPTS: -verbose:class
-      SPARK_EXECUTOR_OPTS: -verbose:class
     command: >
       /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
       spark://spark-master:7077
     volumes:
-      - ./resources/spark/data:/opt/spark/work-dir/data
+      - ./services/spark/resources/data:/opt/spark/work-dir/data
+      - ./services/spark/resources/config/log4j2.properties:/opt/spark/conf/log4j2.properties
     depends_on:
       - spark-master
+    profiles:
+      - spark
+      - all
 
   spark-submit-client:
-    build: ./containers/client
+    build: ./services/spark
     container_name: spark-submit-client
     environment:
       SPARK_MODE: client
+      PYTHONPATH: /opt/spark-jobs
     working_dir: /opt/spark-jobs
     command: tail -f /dev/null
     volumes:
-      - ./resources/spark/data:/opt/spark/work-dir/data
-      - ./jobs:/opt/spark-jobs
+      - ./services/spark/resources/data:/opt/spark/work-dir/data
+      - ./services/spark/jobs:/opt/spark-jobs
     depends_on:
       - spark-master
+    profiles:
+      - spark
+      - all

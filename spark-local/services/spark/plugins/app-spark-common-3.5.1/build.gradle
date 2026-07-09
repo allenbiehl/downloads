@@ -1,0 +1,52 @@
+plugins {
+    // id 'java'
+    id 'scala'
+}
+
+group = 'app.apache.spark.internal.io'
+version = '3.5.1'
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        // Upgraded language version to Java 21 LTS
+        languageVersion = JavaLanguageVersion.of(11) 
+    }
+}
+
+dependencies {
+    // 1. Spark 3.5.1 Base Dependencies
+    implementation 'org.apache.spark:spark-core_2.12:3.5.1'
+    implementation 'org.apache.spark:spark-sql_2.12:3.5.1'
+    implementation 'org.apache.spark:spark-hadoop-cloud_2.12:3.5.1'    
+
+    // 2. Hadoop 3.3.4 Infrastructure Modules
+    implementation 'org.apache.hadoop:hadoop-mapreduce-client-core:3.3.4'
+    implementation 'org.apache.hadoop:hadoop-aws:3.3.4'
+    implementation 'org.apache.hadoop:hadoop-common:3.3.4'
+
+    // 3. CORRECT AWS SDK V1 (Purge the software.amazon.awssdk BOM and dependencies)
+    // Hadoop 3.3.4 relies exactly on the 1.12.x line of the Amazon AWS SDK v1.
+    implementation 'com.amazonaws:aws-java-sdk-s3:1.12.262'
+
+    // 4. Language Engine
+    implementation 'org.scala-lang:scala-library:2.12.18' // Switched to 2.12 to match Spark _2.12
+    
+}
+
+// tasks.withType(JavaCompile) {
+//     options.encoding = 'UTF-8'
+// }
+
+tasks.withType(ScalaCompile) {
+    scalaCompileOptions.additionalParameters = [
+        "-release", "11" // Cleanly binds to your Java toolchain level
+    ]
+}
+
+tasks.named('jar') {
+    archiveFileName = "app-spark-common-${version}.jar"
+}

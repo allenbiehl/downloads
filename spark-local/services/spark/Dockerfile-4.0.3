@@ -1,0 +1,79 @@
+# FROM apache/spark:4.0.3-scala2.13-java17-python3-r-ubuntu
+
+# USER root
+
+# RUN python3 -m pip install pyspark "pyspark[sql]" pandas
+
+# RUN mkdir -p /opt/spark/work-dir/data/input && \
+#     mkdir -p /opt/spark/work-dir/data/output && \
+#     chmod 775 /opt/spark/work-dir/data/output && \
+#     chown -R spark:spark /opt/spark/work-dir/data/output
+
+# # RUN mkdir /opt/spark/conf && \
+# #     echo "spark.driver.extraClassPath       /opt/spark/jars/app-spark-common-4.0.0.jar" >> /opt/spark/conf/spark-defaults.conf && \
+# #     echo "spark.executor.extraClassPath     /opt/spark/jars/app-spark-common-4.0.0.jar" >> /opt/spark/conf/spark-defaults.conf && \
+# #     echo "spark.driver.extraJavaOptions     -Dsoftware.amazon.awssdk.sdk.execution.interceptors=com.yourcompany.s3.interceptor.GlobalS3V2Interceptor" >> /opt/spark/conf/spark-defaults.conf && \
+# #     echo "spark.executor.extraJavaOptions   -Dsoftware.amazon.awssdk.sdk.execution.interceptors=com.yourcompany.s3.interceptor.GlobalS3V2Interceptor" >> /opt/spark/conf/spark-defaults.conf
+
+# USER spark
+
+# # Community Hadoop Jars
+# RUN wget \
+#     -P /opt/spark/jars/ \
+#     https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-common/3.4.1/hadoop-common-3.4.1.jar
+# RUN wget \
+#     -P /opt/spark/jars/ \
+#     https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.4.1/hadoop-aws-3.4.1.jar
+# RUN wget \
+#     -P /opt/spark/jars/ \
+#     https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-auth/3.4.1/hadoop-auth-3.4.1.jar
+# RUN wget \
+#     -P /opt/spark/jars/ \
+#     https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-hdfs-client/3.4.1/hadoop-hdfs-client-3.4.1.jar
+
+# # AWS SDK v2 Jars
+# RUN wget \
+#     -O /opt/spark/jars/aws-sdk-v2-bundle-2.25.53.jar \
+#     https://repo1.maven.org/maven2/software/amazon/awssdk/bundle/2.25.53/bundle-2.25.53.jar
+
+# # XML Parser Jars
+# RUN wget \
+#     -P /opt/spark/jars \
+#     https://repo1.maven.org/maven2/org/codehaus/woodstox/stax2-api/4.2.1/stax2-api-4.2.1.jar
+# RUN wget \
+#     -P /opt/spark/jars \
+#     https://repo1.maven.org/maven2/com/fasterxml/woodstox/woodstox-core/6.5.1/woodstox-core-6.5.1.jar
+
+
+FROM apache/spark:4.0.3-scala2.13-java17-python3-r-ubuntu
+
+USER root
+
+# Install Python libs
+RUN python3 -m pip install pyspark "pyspark[sql]" pandas
+
+# Create directories Spark needs
+RUN mkdir -p /opt/spark/work-dir/data/input && \
+    mkdir -p /opt/spark/work-dir/data/output && \
+    chmod 775 /opt/spark/work-dir/data/output && \
+    chown -R spark:spark /opt/spark/work-dir/data/output
+
+USER spark
+
+# IMPORTANT:
+# Spark 4.0.3 ALREADY includes Hadoop 3.4.x internally.
+# DO NOT override it with external hadoop-* jars.
+# Only add AWS SDK v2.
+
+# Add AWS SDK v2 bundle for S3A V2 interceptors
+RUN wget \
+    -O /opt/spark/jars/aws-sdk-v2-bundle-2.25.53.jar \
+    https://repo1.maven.org/maven2/software/amazon/awssdk/bundle/2.25.53/bundle-2.25.53.jar
+
+# Add XML parser dependencies (safe & needed for V2 SDK)
+RUN wget \
+    -P /opt/spark/jars \
+    https://repo1.maven.org/maven2/org/codehaus/woodstox/stax2-api/4.2.1/stax2-api-4.2.1.jar
+RUN wget \
+    -P /opt/spark/jars \
+    https://repo1.maven.org/maven2/com/fasterxml/woodstox/woodstox-core/6.5.1/woodstox-core-6.5.1.jar

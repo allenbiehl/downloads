@@ -12,8 +12,8 @@ services:
       SPARK_DRIVER_OPTS: -verbose:class
       SPARK_EXECUTOR_OPTS: -verbose:class
     volumes:
-      - ./resources/minio/config/entrypoint.sh:/entrypoint.sh:ro
-      - ./resources/minio/config/docker-entrypoint-init.d:/docker-entrypoint-init.d:ro
+      - ./services/minio/resources/config/entrypoint.sh:/entrypoint.sh:ro
+      - ./services/minio/resources/config/docker-entrypoint-init.d:/docker-entrypoint-init.d:ro
     entrypoint: ["/entrypoint.sh"]
     networks:
       - pipeline-net
@@ -127,8 +127,8 @@ services:
       #_JAVA_OPTIONS: "-Dlogging.level.software.amazon.awssdk.request=DEBUG -Dlogging.level.software.amazon.awssdk.http=DEBUG"
       #JAVA_OPTS: "-Dlogging.level.software.amazon.awssdk.request=DEBUG -Dlogging.level.software.amazon.awssdk.http=DEBUG"
     volumes:
-      - ./resources/data-prepper/pipelines.yaml:/usr/share/data-prepper/pipelines/pipelines.yaml:ro
-      - ./resources/data-prepper/.aws/config:/usr/share/data-prepper/config/.aws/config:ro
+      - ./services/data-prepper/resources/pipelines.yaml:/usr/share/data-prepper/pipelines/pipelines.yaml:ro
+      - ./services/data-prepper/resources/.aws/config:/usr/share/data-prepper/config/.aws/config:ro
       # - ./resources/data-prepper/log4j2-rolling.properties:/usr/share/data-prepper/config/log4j2-rolling.properties:ro
       # - ./resources/data-prepper/data-prepper-config.yaml:/usr/share/data-prepper/config/data-prepper-config.yaml:ro
     depends_on:
