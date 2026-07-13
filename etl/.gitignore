@@ -1,0 +1,6 @@
+.bsp
+.data
+.metals
+.scala-build
+**/buffer
+**/staging

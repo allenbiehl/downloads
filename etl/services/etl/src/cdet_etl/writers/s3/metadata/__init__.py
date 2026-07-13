@@ -1,0 +1,1 @@
+from cdet_etl.writers.s3.metadata.default_metadata_provider import DefaultMetadataProvider

@@ -1,0 +1,33 @@
+{
+  "name": "opensearch-sink-connector",
+  "config": {
+    "connector.class": "io.aiven.kafka.connect.opensearch.OpensearchSinkConnector",
+    "tasks.max": "1",
+    "topics": "your-kafka-topic",
+    "connection.url": "https://opensearch-node-1:9200",
+    "connection.username": "admin",
+    "connection.password": "YourSecurePassword123!",
+    "connection.ssl.endpoint.identification.algorithm": "",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "key.ignore": "false",
+    "key.ignore.id.strategy": "record.key",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "schema.ignore": "true",
+    "consumer.override.auto.offset.reset": "earliest",
+
+    "transforms": "convertStringToTimestamp,extractDatePrefix,finalizeIndexName",
+
+    "transforms.convertStringToTimestamp.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+    "transforms.convertStringToTimestamp.field": "event_time",
+    "transforms.convertStringToTimestamp.target.type": "unix",
+    "transforms.convertStringToTimestamp.format": "yyyy-MM-dd'T'HH:mm:ssX",
+
+    "transforms.extractDatePrefix.type": "io.aiven.kafka.connect.transforms.ExtractTimestamp$Value",
+    "transforms.extractDatePrefix.field.name": "event_time",
+
+    "transforms.finalizeIndexName.type": "org.apache.kafka.connect.transforms.TimestampRouter",
+    "transforms.finalizeIndexName.topic.format": "events-${topic}-${timestamp}",
+    "transforms.finalizeIndexName.timestamp.format": "yyyy-MM"
+  }
+}

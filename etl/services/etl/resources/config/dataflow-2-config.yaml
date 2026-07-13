@@ -1,0 +1,17 @@
+reader:
+  class_path: cdet_etl.readers.S3Reader
+  properties:
+    client_name: minio
+    formats:
+      - json
+      - parquet
+transformers:
+  - cdet_etl.transformers.DatePartitionTransformer
+  - cdet_etl.transformers.StatusTransformer
+writer:
+  class_path: cdet_etl.writers.S3Writer
+  properties:
+    client_name: minio
+    bucket_name: output-2
+    object_prefix: myfiles
+    format: parquet
