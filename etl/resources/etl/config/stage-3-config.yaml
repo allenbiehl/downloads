@@ -1,0 +1,15 @@
+reader:
+  class_path: cdet_etl.readers.S3Reader
+  properties:
+    formats:
+      - parquet
+    access_key: "${MINIO_AWS_ACCESS_KEY_ID}"
+    secret_key: "${MINIO_AWS_SECRET_ACCESS_KEY}"
+    endpoint_url: "${MINIO_AWS_ENDPOINT_URL}"
+writer:
+  class_path: cdet_etl.writers.KafkaWriter
+  properties:
+    boostrap_servers: "${KAFKA_BOOTSTRAP_SERVERS}"
+    topic: "${KAFKA_TOPIC}"
+    message_key_field: "${KAFKA_KEY_FIELD}"
+    transactional_id_prefix: "${KAFKA_TRANSACTIONAL_ID_PREFIX}"

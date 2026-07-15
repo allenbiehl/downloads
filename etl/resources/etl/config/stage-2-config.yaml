@@ -1,0 +1,29 @@
+reader:
+  class_path: cdet_etl.readers.S3Reader
+  properties:
+    formats:
+      - parquet
+    access_key: "${MINIO_AWS_ACCESS_KEY_ID}"
+    secret_key: "${MINIO_AWS_SECRET_ACCESS_KEY}"
+    endpoint_url: "${MINIO_AWS_ENDPOINT_URL}"
+transformers:
+  - class_path: cdet_etl.transformers.DatePartitionTransformer
+    properties:
+      timestamp_field: event_time
+  - class_path: cdet_etl.transformers.StatusTransformer
+writer:
+  class_path: cdet_etl.writers.S3Writer
+  properties:
+    bucket_name: stage-1
+    object_prefix: files
+    format: json
+    access_key: "${MINIO_AWS_ACCESS_KEY_ID}"
+    secret_key: "${MINIO_AWS_SECRET_ACCESS_KEY}"
+    endpoint_url: "${MINIO_AWS_ENDPOINT_URL}"
+  metadata:
+    class_path: "cdet_etl.writers.s3.metadata.DefaultMetadataProvider"
+    properties:
+      custom_metadata:
+        custom-billing-id: "dept-404"
+        data-classification: "highly-restricted"
+        pipeline-owner: "data-platform-team"

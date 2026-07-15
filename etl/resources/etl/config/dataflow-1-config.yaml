@@ -1,0 +1,17 @@
+reader:
+  class_path: cdet_etl.readers.S3Reader
+  properties:
+    formats:
+      - json
+      - parquet
+transformers:
+  - class_path: cdet_etl.transformers.DatePartitionTransformer
+    properties:
+      timestamp_field: event_time
+  - class_path: cdet_etl.transformers.StatusTransformer
+writer:
+  class_path: cdet_etl.writers.S3Writer
+  properties:
+    bucket_name: output-1
+    object_prefix: myfiles
+    format: json
