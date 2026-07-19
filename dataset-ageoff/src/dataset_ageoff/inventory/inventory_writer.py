@@ -1,6 +1,7 @@
 # pylint: disable=missing-module-docstring
 import io
 import sys
+import uuid
 import argparse
 from dataset_ageoff.config.file_config_loader import FileConfigLoader
 from dataset_ageoff.inventory.models import InventoryConfig
@@ -20,9 +21,7 @@ class InventoryWriter:
 
     def __init__(self, config_path: str, output_dir: str):
         logger.info("Initializing %s", self.__class__.__name__)
-        self._config = InventoryConfig(
-            **FileConfigLoader.load(config_path)
-        )
+        self._config = InventoryConfig(**FileConfigLoader.load(config_path))
         self._output_dir = output_dir.rstrip('/')
         self._schema = pa.schema([
             ('path', pa.string()),
@@ -37,8 +36,13 @@ class InventoryWriter:
         """
         Write stream to s3 output dir
         """
-        self._empty_output_dir()
-        self._write_stream(stream)
+        try:
+            self._empty_output_dir()
+            total_processed = self._write_stream(stream)
+            self._commit(total_processed)
+        except Exception as err:
+            self._rollback(err)
+            raise err
 
     def _init_file_system(self):
         logger.info("Initializing S3 file system")
@@ -57,53 +61,56 @@ class InventoryWriter:
             self._fs.delete_dir_contents(clean_dir_path)
             logger.info("Successfully cleaned output dir '%s'", self._output_dir)
         except Exception as err:
+            if str(err).find("Path does not exist"):
+                return
             logger.error("Failed to clean output dir '%s', %s", self._output_dir, err)
 
-    def _write_stream(self, stream: io.BufferedReader) -> None:
+    def _write_stream(self, stream: io.BufferedReader) -> int:
         logger.info("Writing output stream to '%s'", self._output_dir)
         paths, sizes, dates = [], [], []
         total_processed, part_index = 0, 0
         buffer = b""
+        total_lines = 0
 
-        try:
-            while chunk := stream.read(65536):
-                buffer += chunk 
+        while chunk := stream.read(65536):
+            buffer += chunk
 
-                while b'\x00' in buffer:
-                    line_bytes, buffer = buffer.split(b'\x00', 1)
-                    line = line_bytes.decode('utf-8', errors='replace').strip()
-                    if not line:
-                        continue
+            while b'\x00' in buffer:
+                line_bytes, buffer = buffer.split(b'\x00', 1)
+                line = line_bytes.decode('utf-8', errors='replace').strip()
+                total_lines += 1
+                if not line:
+                    print("not line")
+                    continue
 
-                    parts = line.split('|||')
-                    if len(parts) != 3:
-                        continue
+                parts = line.split('|||')
+                if len(parts) != 3:
+                    continue
 
-                    dates.append(parts[0][:10])
-                    paths.append(parts[1])
-                    sizes.append(int(parts[2]))
-                    total_processed += 1
+                dates.append(parts[0][:10])
+                paths.append(parts[1])
+                sizes.append(int(parts[2]))
+                total_processed += 1
 
-                    if len(paths) >= self._config.batch_size:
-                        self._stage_file_part(part_index, paths, sizes, dates)
-                        part_index += 1
-                        paths, sizes, dates = [], [], []
+                if len(paths) >= self._config.batch_size:
+                    self._stage_file_part(part_index, paths, sizes, dates)
+                    part_index += 1
+                    paths, sizes, dates = [], [], []
 
-            if paths:
-                self._stage_file_part(part_index, paths, sizes, dates)
-                part_index += 1
-                paths, sizes, dates = [], [], []
+        if paths:
+            self._stage_file_part(part_index, paths, sizes, dates)
+            part_index += 1
+            paths, sizes, dates = [], [], []
 
-            self._commit(part_index, total_processed)
+        print("total lines", total_lines)
+
+        return total_processed
 
 
-        except Exception as err:
-            self._rollback(err)
-            raise err
-
-    def _stage_file_part(self, part_index: int, paths: list, sizes: list, dates: list) -> None:
+    def _stage_file_part(self, part_index: int, paths: list[str], sizes: list[int], dates: list[str]) -> None:
         """Instantiates the multipart stream handle and stages the file part without committing."""
-        file_path = f"{self._output_dir}/part_{part_index}.parquet"
+        file_id = uuid.uuid4().hex
+        file_path = f"{self._output_dir}/part_{file_id}.parquet"
         logger.info("Staging file part '%s' via multipart upload", file_path)
         clean_file_path = self._get_clean_s3_path(file_path)
         s3_file = self._fs.open_output_stream(clean_file_path)
@@ -113,15 +120,16 @@ class InventoryWriter:
         self._active_streams.append(s3_file)
         self._active_writers.append(writer)
 
-    def _commit(self, part_count: int, total_processed: int) -> None:
+    def _commit(self, total_processed: int) -> None:
         """Appends Parquet footers and executes CompleteMultipartUpload on all files."""
         logger.info("Stream fully read with zero errors. Committing all files...")
+        total_parts = len(self._active_streams)
         for writer in self._active_writers:
             writer.close()
         for s3_file in self._active_streams:
             s3_file.close()
         logger.info("Transaction committed! Generated %d Parquet part files. Total records: %d",
-            part_count, total_processed)
+            total_parts, total_processed)
 
     def _rollback(self, error: Exception) -> None:
         """Aborts all active multipart streams, cleaning up uncommitted chunks on MinIO."""

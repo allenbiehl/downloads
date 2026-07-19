@@ -12,9 +12,15 @@ class DatasetApiClient:
             DatasetDirectory(
                 id=1001,
                 name="project_A",
-                path="/Users/evanbiehl/Projects/etl",
-                age_off_days=0
+                path="/Users/evanbiehl/Projects",
+                age_off_days=30
             ),
+            DatasetDirectory(
+                id=1002,
+                name="project_B",
+                path="/Users/evanbiehl/Projects",
+                age_off_days=15
+            ),            
             # DatasetDirectory(
             #     id=1002,
             #     name="project_B",

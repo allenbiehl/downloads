@@ -45,18 +45,18 @@ class AgeoffPendingManager:
         """
         targets = self._dataset_api_client.get_directories()
 
-        print(f"Initializing parallel engine with {self._config.max_workers} concurrent workers...")
-        print(f"Scanning {len(targets)} targets over NFS. Performance tracking enabled.")
+        logger.info("Initializing parallel engine with %d concurrent workers...", self._config.max_workers)
+        logger.info("Scanning %d targets over NFS. Performance tracking enabled.", len(targets))
 
         jobs = self._build_jobs(targets=targets)
 
         try:
             self._execute_jobs(jobs)
         except Exception as err:
-            print(f"An error occurred, {err}")
+            logger.error("An error occurred, %s", err)
 
     def _execute_jobs(self, jobs: list[AgeoffPendingJobDetails]) -> None:
-        print("Executing jobs on concurrent workers")
+        logger.info("Executing jobs on concurrent workers")
         with ProcessPoolExecutor(max_workers=self._config.max_workers) as executor:
             futures = {
                 executor.submit(self._execute_job, job): job for job in jobs
@@ -125,6 +125,7 @@ class AgeoffPendingManager:
                 f'sort -z | '
                 f'python compress_meta.py --config=/{self._config_path} --output-dir="{output_dir}"'
             )
+        logger.debug(cmd)
         return cmd
 
     def _build_jobs(self, targets: list[DatasetDirectory]) -> list[AgeoffPendingJobDetails]:

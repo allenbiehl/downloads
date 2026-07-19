@@ -2,6 +2,12 @@
 
 ## Local Development
 
+1. Start Minio
+
+```bash
+docker compose up minio
+```
+
 1. Install editable mode
 
 ```bash
@@ -20,6 +26,36 @@ dataset-ageoff inventory create-pending \
 ```bash
 dataset-ageoff inventory create-period \
   --config resources/ageoff-period-config.yaml \
+  --start-date "2026-01-01" \
+  --period-type month
+
+dataset-ageoff inventory create-period \
+  --config resources/ageoff-period-config.yaml \
+  --start-date "2026-02-01" \
+  --period-type month
+  
+dataset-ageoff inventory create-period \
+  --config resources/ageoff-period-config.yaml \
+  --start-date "2026-03-01" \
+  --period-type month
+
+dataset-ageoff inventory create-period \
+  --config resources/ageoff-period-config.yaml \
+  --start-date "2026-04-01" \
+  --period-type month
+
+dataset-ageoff inventory create-period \
+  --config resources/ageoff-period-config.yaml \
+  --start-date "2026-05-01" \
+  --period-type month
+
+dataset-ageoff inventory create-period \
+  --config resources/ageoff-period-config.yaml \
+  --start-date "2026-06-01" \
+  --period-type month
+
+dataset-ageoff inventory create-period \
+  --config resources/ageoff-period-config.yaml \
   --start-date "2026-07-01" \
-  --end-date "2026-07-30 23:59:59"
+  --period-type month
 ```

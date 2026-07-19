@@ -3,10 +3,15 @@ from dataclasses import dataclass
 from datetime import datetime
 import enum
 
+class PeriodType(enum.Enum):
+    DAY = enum.auto()
+    MONTH = enum.auto()
+
 @dataclass
-class DateRange:
-    start_date: datetime
-    end_date: datetime
+class DateRangePeriod:
+    start_date: datetime | None
+    end_date: datetime | None
+    period_type: PeriodType
 
 @dataclass
 class DatasetDirectory:
@@ -24,7 +29,7 @@ class AgeoffPendingJobDetails:
 @dataclass
 class AgeoffPeriodJobDetails:
     target: DatasetDirectory
-    period: DateRange
+    period: DateRangePeriod
     output_dir: str
 
 @dataclass

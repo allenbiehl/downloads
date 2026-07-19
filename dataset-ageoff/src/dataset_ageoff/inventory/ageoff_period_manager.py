@@ -1,5 +1,6 @@
 # pylint: disable=missing-module-docstring
 # pylint: disable=broad-exception-caught
+import calendar
 from datetime import datetime, timezone, timedelta
 import os
 import sys
@@ -12,10 +13,11 @@ from dataset_ageoff.clients.dataset_api_client import DatasetApiClient
 from dataset_ageoff.inventory.models import (
     DatasetDirectory,
     AgeoffPeriodJobDetails,
-    DateRange,
+    DateRangePeriod,
     JobExecutionResult,
     JobExecutionStatus,
-    InventoryConfig
+    InventoryConfig,
+    PeriodType
 )
 
 class AgeoffPeriodManager:
@@ -39,25 +41,34 @@ class AgeoffPeriodManager:
             **FileConfigLoader.load(config_path)
         )
 
-    def execute(self, start_date: datetime, end_date: datetime) -> None:
+    def execute(self, start_date: datetime, period_type: PeriodType) -> None:
         """
         Generate inventory that includes files that were aged off between the start and end dates. 
         The inventory is generated in parallel using multiple workers.
         """
         targets = self._dataset_api_client.get_directories()
 
-        print(f"Initializing parallel engine with {self._config.max_workers} concurrent workers...")
-        print(f"Scanning {len(targets)} targets over NFS. Performance tracking enabled.")
+        logger.info("Initializing parallel engine with %d concurrent workers...", self._config.max_workers)
+        logger.info("Scanning %d targets over NFS. Performance tracking enabled.", len(targets))
 
-        jobs = self._build_jobs(targets=targets, start_date=start_date, end_date=end_date)
+        start_date = self._get_period_start_date(start_date=start_date, period_type=period_type)
+        end_date = self._get_period_end_date(start_date=start_date, period_type=period_type)
+        logger.info("Processing start date: '%s', end date: '%s'", start_date, end_date)
+
+        jobs = self._build_jobs(
+            targets=targets,
+            start_date=start_date,
+            end_date=end_date,
+            period_type=period_type
+        )
 
         try:
             self._execute_jobs(jobs)
         except Exception as err:
-            print(f"An error occurred, {err}")
+            logger.error("An error occurred, %s", err)
 
     def _execute_jobs(self, jobs: list[AgeoffPeriodJobDetails]) -> None:
-        print("Executing jobs on concurrent workers")
+        logger.info("Executing jobs on concurrent workers")
         with ProcessPoolExecutor(max_workers=self._config.max_workers) as executor:
             futures = {
                 executor.submit(self._execute_job, job): job for job in jobs
@@ -86,7 +97,7 @@ class AgeoffPeriodManager:
         """
         Worker process that executes the shell pipeline and times the execution.
         """
-        logger.info("Processing dataset '%s' directory '%s'", 
+        logger.info("Processing dataset '%s' directory '%s'",
             job_details.target.name, job_details.target.path)
 
         if not os.path.exists(job_details.target.path):
@@ -104,8 +115,6 @@ class AgeoffPeriodManager:
         start_date = job_details.period.start_date.strftime("%Y-%m-%d %H:%M:%S")
         end_date = job_details.period.end_date.strftime("%Y-%m-%d %H:%M:%S")
         output_dir = job_details.output_dir
-
-        # Dynamically locate the target script relative to this file's directory
         current_dir = os.path.dirname(os.path.abspath(__file__))
         target_script = os.path.join(current_dir, "inventory_writer.py")
 
@@ -127,28 +136,46 @@ class AgeoffPeriodManager:
                 f'sort -z | '
                 f'python compress_meta.py --config=/{self._config_path} --output-dir="{output_dir}"'
             )
-        print(cmd)
+        logger.debug(cmd)
         return cmd
 
     def _build_jobs(
         self,
         targets: list[DatasetDirectory],
         start_date: datetime,
-        end_date: datetime
+        end_date: datetime,
+        period_type: PeriodType
     ) -> list[AgeoffPeriodJobDetails]:
         jobs = []
         for target in targets:
-            period = self._get_ageoff_period(target, start_date, end_date)
-            output_dir = self._build_output_dir(target, period)
+            period = self._get_ageoff_period(
+                target=target,
+                start_date=start_date,
+                end_date=end_date,
+                period_type=period_type
+            )
+
+            if not period:
+                logger.debug("Skipping job %s (%s). Outside ageoff period.",
+                    target.name, target.path)
+                continue
+
+            output_dir = self._build_output_dir(target=target, period=period)
             job = AgeoffPeriodJobDetails(target=target, period=period, output_dir=output_dir)
+
+            logger.debug("Adding job %s (%s).", target.name, target.path)
             jobs.append(job)
 
         return jobs
 
-    def _build_output_dir(self, target: DatasetDirectory, period: DateRange) -> str:
-        date_prefix = period.start_date.strftime("%Y/%m")
+    def _build_output_dir(self, target: DatasetDirectory, period: DateRangePeriod) -> str:
+        if period.period_type == PeriodType.DAY:
+            date_prefix = period.start_date.strftime("%Y/%m/%d")
+        else:
+            date_prefix = period.start_date.strftime("%Y/%m")
+
         return os.path.join(
-            "s3://", 
+            "s3://",
             self._config.s3_bucket,
             self._config.s3_prefix,
             date_prefix,
@@ -159,16 +186,52 @@ class AgeoffPeriodManager:
         self,
         target: DatasetDirectory,
         start_date: datetime,
-        end_date: datetime
-    ) -> DateRange:
+        end_date: datetime,
+        period_type: PeriodType
+    ) -> DateRangePeriod:
         ageoff_cutoff = datetime.now(timezone.utc) - timedelta(days=target.age_off_days)
         ageoff_cutoff = ageoff_cutoff.replace(hour=0, minute=0, second=0, microsecond=0)
         ageoff_cutoff = ageoff_cutoff - timedelta(seconds=1)
 
-        if ageoff_cutoff < start_date:
-            return DateRange(ageoff_cutoff, ageoff_cutoff)
+        if ageoff_cutoff <= start_date:
+            return None
 
-        if ageoff_cutoff < end_date:
-            return DateRange(start_date, ageoff_cutoff)
+        if ageoff_cutoff <= end_date:
+            return DateRangePeriod(
+                start_date=start_date,
+                end_date=ageoff_cutoff,
+                period_type=period_type
+            )
 
-        return DateRange(start_date, end_date)
+        return DateRangePeriod(
+            start_date=start_date,
+            end_date=end_date,
+            period_type=period_type
+        )
+
+    def _get_period_start_date(self, start_date: datetime, period_type: PeriodType) -> datetime:
+        if period_type == PeriodType.MONTH:
+            return datetime(
+                start_date.year, start_date.month, 1, 0, 0, 0,
+                tzinfo=timezone.utc
+            )
+        if period_type == PeriodType.DAY:
+            return datetime(
+                start_date.year, start_date.month, start_date.day, 0, 0, 0,
+                tzinfo=timezone.utc
+            )
+        raise ValueError(f"Unable to determine period end date. Invalid period type '{type}'")
+
+    def _get_period_end_date(self, start_date: datetime, period_type: PeriodType) -> datetime:
+        if period_type == PeriodType.MONTH:
+            _, last_day = calendar.monthrange(start_date.year, start_date.month)
+            return datetime(
+                start_date.year, start_date.month, last_day, 23, 59, 59,
+                tzinfo=timezone.utc
+            )
+        if period_type == PeriodType.DAY:
+            return datetime(
+                start_date.year, start_date.month, start_date.day, 23, 59, 59,
+                tzinfo=timezone.utc
+            )
+        raise ValueError(f"Unable to determine period end date. Invalid period type '{type}'")
