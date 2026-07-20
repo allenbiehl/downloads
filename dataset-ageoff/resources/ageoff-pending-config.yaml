@@ -7,4 +7,4 @@ s3_region: "us-east-1"
 s3_bucket: ageoff
 s3_prefix: pending
 max_workers: 2
-batch_size: 3000000
+batch_size: 300000

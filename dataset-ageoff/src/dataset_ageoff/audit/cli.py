@@ -3,15 +3,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import click
-from dataset_ageoff.inventory.ageoff_pending_manager import AgeoffPendingManager
-from dataset_ageoff.inventory.ageoff_period_manager import AgeoffPeriodManager
-from dataset_ageoff.inventory.models import PeriodType
+from dataset_ageoff.audit.ageoff_pending_manager import AgeoffPendingManager
+from dataset_ageoff.audit.ageoff_period_manager import AgeoffPeriodManager
+from dataset_ageoff.audit.models import PeriodType
 
-@click.group(name="inventory")
+@click.group(name="audit")
 @click.pass_context
 def cli(_ctx: click.core.Context) -> None:
     """
-    Main inventory cli
+    Main audit cli
     """
 
 @cli.command()
@@ -24,7 +24,7 @@ def cli(_ctx: click.core.Context) -> None:
 )
 def create_pending(_ctx: click.core.Context, config: str):
     """
-    Create ageoff pending inventory
+    Create ageoff pending audit
     """
     config_path = str(Path(config).resolve())
     AgeoffPendingManager(config_path=config_path).execute()
@@ -51,7 +51,7 @@ def create_pending(_ctx: click.core.Context, config: str):
 )
 def create_period(_ctx: click.core.Context, config: str, start_date: str, period_type: PeriodType):
     """
-    Create ageoff period inventory
+    Create ageoff period audit
     """
     start_timestamp = datetime.fromisoformat(start_date)
     start_timestamp = start_timestamp.replace(tzinfo=timezone.utc)

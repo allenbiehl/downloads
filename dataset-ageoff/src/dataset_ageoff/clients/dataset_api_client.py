@@ -1,4 +1,4 @@
-from dataset_ageoff.inventory.models import DatasetDirectory
+from dataset_ageoff.audit.models import DatasetDirectory
 
 
 class DatasetApiClient:
@@ -13,14 +13,14 @@ class DatasetApiClient:
                 id=1001,
                 name="project_A",
                 path="/Users/evanbiehl/Projects",
-                age_off_days=30
+                age_off_days=0
             ),
-            DatasetDirectory(
-                id=1002,
-                name="project_B",
-                path="/Users/evanbiehl/Projects",
-                age_off_days=15
-            ),            
+            # DatasetDirectory(
+            #     id=1002,
+            #     name="project_B",
+            #     path="/Users/evanbiehl/Projects",
+            #     age_off_days=15
+            # ),            
             # DatasetDirectory(
             #     id=1002,
             #     name="project_B",

@@ -6,25 +6,23 @@ import os
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataset_ageoff.config.file_config_loader import FileConfigLoader
-from dataset_ageoff.utils.runner import CommandRunner
+from dataset_ageoff.utils.runner import CommandRunner, ExecutionResult, ExecutionStatus
 from dataset_ageoff.utils.logger import root_logger as logger
 
 from dataset_ageoff.clients.dataset_api_client import DatasetApiClient
-from dataset_ageoff.inventory.models import (
+from dataset_ageoff.audit.models import (
     DatasetDirectory,
     AgeoffPeriodJobDetails,
     DateRangePeriod,
-    JobExecutionResult,
-    JobExecutionStatus,
-    InventoryConfig,
+    AuditConfig,
     PeriodType
 )
 
 class AgeoffPeriodManager:
     """
-    Generates ageoff inventory for all dataset directories
+    Generates ageoff audit for all dataset directories
     """
-    _config: InventoryConfig
+    _config: AuditConfig
     _dataset_api_client: DatasetApiClient
     _runner: CommandRunner
 
@@ -37,14 +35,14 @@ class AgeoffPeriodManager:
         self._config_path = config_path
         self._dataset_api_client = dataset_api_client or DatasetApiClient()
         self._runner = runner or CommandRunner()
-        self._config = InventoryConfig(
+        self._config = AuditConfig(
             **FileConfigLoader.load(config_path)
         )
 
     def execute(self, start_date: datetime, period_type: PeriodType) -> None:
         """
-        Generate inventory that includes files that were aged off between the start and end dates. 
-        The inventory is generated in parallel using multiple workers.
+        Generate audit that includes files that were aged off between the start and end dates. 
+        The audit is generated in parallel using multiple workers.
         """
         targets = self._dataset_api_client.get_directories()
 
@@ -77,7 +75,7 @@ class AgeoffPeriodManager:
                 job = futures[future]
                 result = future.result()
 
-                if result.status == JobExecutionStatus.SUCCESS:
+                if result.status == ExecutionStatus.SUCCESS:
                     logger.info("[Finished] %s (%s) in %s -> %s",
                         job.target.name,
                         job.target.path,
@@ -88,12 +86,12 @@ class AgeoffPeriodManager:
                     logger.warning("[Alert] %s (%s) in %s -> %s: %s",
                         job.target.name,
                         job.target.path,
-                        result.duraction,
+                        result.duration,
                         result.duration,
                         result.error_message
                     )
 
-    def _execute_job(self, job_details: AgeoffPeriodJobDetails) -> JobExecutionResult:
+    def _execute_job(self, job_details: AgeoffPeriodJobDetails) -> ExecutionResult:
         """
         Worker process that executes the shell pipeline and times the execution.
         """
@@ -101,8 +99,8 @@ class AgeoffPeriodManager:
             job_details.target.name, job_details.target.path)
 
         if not os.path.exists(job_details.target.path):
-            return JobExecutionResult(
-                status=JobExecutionStatus.SKIPPED,
+            return ExecutionResult(
+                status=ExecutionStatus.SKIPPED,
                 error_message=f"Path '{job_details.target.path}' not found",
                 duration=0.0
             )
@@ -116,24 +114,22 @@ class AgeoffPeriodManager:
         end_date = job_details.period.end_date.strftime("%Y-%m-%d %H:%M:%S")
         output_dir = job_details.output_dir
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        target_script = os.path.join(current_dir, "inventory_writer.py")
+        target_script = os.path.join(current_dir, "ageoff_writer.py")
 
         # mac dev env
         is_mac = sys.platform == "darwin"
 
         if is_mac:
+            # option 2
             cmd = (
                 f'find "{dir_path}" -type f -newermt "{start_date}" ! -newermt "{end_date}" -print0 | '
-                f'xargs -0 stat -t "%Y-%m-%d" -f "%Sm|||%N|||%z" | '
-                f'tr "\\n" "\\0" | '
-                f'sort -z | '
+                f'xargs -0 stat -t "%Y-%m-%d" -f "%Sm\t%N\t%z" | '            
                 f'python {target_script} --config=/{self._config_path} --output-dir="{output_dir}"'
             )
         else:
             cmd = (
                 f'find "{dir_path}" -type f -newermt "{start_date}" ! -newermt "{end_date}" '
                 f'-printf "%FA|||%p|||%s\\0" | '
-                f'sort -z | '
                 f'python compress_meta.py --config=/{self._config_path} --output-dir="{output_dir}"'
             )
         logger.debug(cmd)

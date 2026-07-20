@@ -1,63 +1,81 @@
+from dataclasses import dataclass
+import enum
 import subprocess
+import sys
 import time
 
-from dataset_ageoff.inventory.models import JobExecutionResult, JobExecutionStatus
+class ExecutionStatus(enum.Enum):
+    SUCCESS = enum.auto()
+    FAILURE = enum.auto()
+    SKIPPED = enum.auto()
+
+@dataclass
+class ExecutionResult:
+    status: ExecutionStatus
+    duration: float = 0.0
+    exit_code: int | None = None
+    error_message: str | None = None
 
 class CommandRunner:
-    """A reusable executor for running shell commands with real-time streaming and timeouts."""
-    
-    def __init__(self, default_timeout: float = 60.0):
-        self.default_timeout: float = default_timeout
+    """A reusable executor that runs shell commands with streaming output and robust cleanup hooks."""
+
+    def __init__(self):
         self._current_process: subprocess.Popen | None = None
 
-    def run(self, command: str | list[str], timeout_seconds: float | None = None) -> JobExecutionResult:
-        """Executes a command, streams stdout/stderr, and returns a structured CommandResult with duration."""
-        timeout: float = timeout_seconds if timeout_seconds is not None else self.default_timeout
-        use_shell: bool = isinstance(command, str)
-        start_time: float = time.perf_counter()
+    def _cleanup_process(self) -> None:
+        """Terminates or kills the active subprocess if it is still running."""
+        if self._current_process and self._current_process.poll() is None:
+            try:
+                self._current_process.terminate()
+                self._current_process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                self._current_process.kill()
+                self._current_process.wait()
+
+    def run(self, command: str, timeout: float | None = None) -> ExecutionResult:
+        """Executes a command string, streams output instantly, and safely traps exceptions."""
+        start_time = time.perf_counter()
         
-        self._current_process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            shell=use_shell
-        )
-
         try:
-            while self._current_process.poll() is None:
-                if time.perf_counter() - start_time > timeout:
-                    raise TimeoutError(f"Command timed out after {timeout} seconds.")
+            self._current_process = subprocess.Popen(
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=False
+            )
 
-                line: str = self._current_process.stdout.readline()
-                if line:
-                    print(line, end="")
-                else:
-                    time.sleep(0.05)
+            # Stream chunks immediately as they hit the OS buffer
+            while True:
+                # Enforce a non-blocking timeout check if one is supplied
+                if timeout and (time.perf_counter() - start_time) > timeout:
+                    raise TimeoutError(f"Command timed out after {timeout} seconds")
 
-            for line in self._current_process.stdout:
-                print(line, end="")
+                output_chunk = self._current_process.stdout.read1()
+                if not output_chunk and self._current_process.poll() is not None:
+                    break
+                    
+                if output_chunk:
+                    sys.stdout.buffer.write(output_chunk)
+                    sys.stdout.flush()
+
+            # Catch any final bytes remaining after process termination
+            final_bytes = self._current_process.stdout.read()
+            if final_bytes:
+                sys.stdout.buffer.write(final_bytes)
+                sys.stdout.flush()
 
             duration = time.perf_counter() - start_time
             exit_code = self._current_process.returncode
-            status = JobExecutionStatus.SUCCESS if exit_code == 0 else JobExecutionStatus.FAILURE
-            return JobExecutionResult(status=status, duration=duration, exit_code=exit_code)
+            status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.FAILURE
+            return ExecutionResult(status=status, duration=duration, exit_code=exit_code)
 
         except TimeoutError as err:
-            duration = time.perf_counter() - start_time
-            return JobExecutionResult(status=JobExecutionStatus.FAILURE, duration=duration, error_message=str(err))
+            duration = round(time.perf_counter() - start_time, 4)
+            return ExecutionResult(status=ExecutionStatus.FAILURE, duration=duration, error_message=str(err))
         except Exception as err:
-            duration = time.perf_counter() - start_time
-            return JobExecutionResult(status=JobExecutionStatus.FAILURE, duration=duration, error_message=f"Unexpected error: {err}")
+            duration = round(time.perf_counter() - start_time, 4)
+            return ExecutionResult(status=ExecutionStatus.FAILURE, duration=duration, error_message=f"Unexpected error: {err}")
         finally:
             self._cleanup_process()
             self._current_process = None
-
-    def _cleanup_process(self) -> None:
-        """Safely terminates the active process if running."""
-        if self._current_process and self._current_process.poll() is None:
-            self._current_process.terminate()
-            try:
-                self._current_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self._current_process.kill()

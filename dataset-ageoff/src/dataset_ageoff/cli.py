@@ -4,7 +4,8 @@ from dataset_ageoff.utils.click import LazyGroup
 @click.group(
     cls=LazyGroup,
     lazy_subcommands={
-        "inventory": "dataset_ageoff.inventory.cli:cli"
+        "audit": "dataset_ageoff.audit.cli:cli",
+        "report": "dataset_ageoff.report.cli:cli"
     },
 )
 @click.pass_context

@@ -33,20 +33,7 @@ class AgeoffPeriodJobDetails:
     output_dir: str
 
 @dataclass
-class JobExecutionStatus(enum.Enum):
-    SUCCESS = enum.auto()
-    FAILURE = enum.auto()
-    SKIPPED = enum.auto()
-
-@dataclass
-class JobExecutionResult:
-    status: JobExecutionStatus
-    duration: float = 0.0
-    exit_code: int | None = None
-    error_message: str | None = None
-
-@dataclass
-class InventoryConfig:
+class AuditConfig:
     s3_access_key: str
     s3_secret_key: str
     s3_endpoint_override: str
