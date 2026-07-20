@@ -2,7 +2,6 @@
 import io
 import json
 import sys
-import time
 import uuid
 import argparse
 import pyarrow as pa
@@ -27,63 +26,75 @@ class AgeoffWriter:
     _csv_convert_options: pacsv.ConvertOptions
 
     def __init__(self, config_path: str, output_dir: str):
-        # 1. Base configuration loading
         self._config = AuditConfig(**FileConfigLoader.load(config_path))
         self._output_dir = output_dir.rstrip('/')
-        
-        # 2. Define the target structural schema mapping
-        self._schema = pa.schema([
-            ('path', pa.string()),
-            ('size_bytes', pa.int64()),
-            ('modified_date', pa.string())
-        ])
-        
-        # 3. Connection pools and transaction tracking arrays
-        self._fs = self._init_file_system()
+        self._schema = self._create_schema()
+        self._fs = self._create_file_system()
+        self._csv_parse_options = self._create_csv_parse_options()
+        self._csv_read_options = self._create_csv_read_options()
+        self._csv_convert_options = self._create_csv_convert_options()
         self._active_streams = []
         self._active_writers = []
-
-        # 4. Consolidated PyArrow CSV C++ engine configurations
-        self._csv_parse_options = pacsv.ParseOptions(
-            delimiter="\t",
-            quote_char=False,
-            invalid_row_handler=lambda row: "skip"
-        )
-        
-        self._csv_convert_options = pacsv.ConvertOptions(
-            column_types={
-                "f0": pa.string(),       # Raw Date/Time string segment (YYYY-MM-DD)
-                "f1": pa.string(),       # System file path
-                "f2": pa.int64()         # Native file size bytes
-            },
-            include_columns=["f0", "f1", "f2"]
-        )
-
-        self._csv_read_options = pacsv.ReadOptions(
-            autogenerate_column_names=True,
-            block_size=10 * 1024 * 1024  # Continuous 10MB chunk pipeline buffer
-        )
 
     def write(self, stream: io.BufferedReader) -> None:
         """
         Write stream to s3 output dir
         """
+        logger.info("Writing output stream to '%s' using native pre-tabbed C++ parser...", self._output_dir)
         try:
-            self._empty_output_dir()        
-            total_processed = self._write_stream(stream)
-            self._commit(total_processed)
+            self._empty_output_dir()
+            global_table = self._ingest_stream(stream)
+            
+            if not global_table:
+                logger.info("No records to write to S3.")
+                return
+
+            global_table = self._sort_files(global_table)
+            self._write_file_parts(global_table)
+            self._write_global_json_summary(global_table)
+            self._commit(global_table.num_rows)
         except Exception as err:
             self._rollback(err)
             raise err
 
-    def _init_file_system(self) -> pafs.S3FileSystem:
+    def _create_file_system(self) -> pafs.S3FileSystem:
         return pafs.S3FileSystem(
             access_key=self._config.s3_access_key,
             secret_key=self._config.s3_secret_key,
             endpoint_override=self._config.s3_endpoint_override,
             scheme=self._config.s3_scheme,
-            # force_dest_bucket_style=not self._config.s3_force_virtual_addressing,
+            force_virtual_addressing=self._config.s3_force_virtual_addressing,
             region=self._config.s3_region
+        )
+
+    def _create_schema(self) -> pa.Schema:
+        return pa.schema([
+            ('path', pa.string()),
+            ('size_bytes', pa.int64()),
+            ('modified_date', pa.string())
+        ])
+
+    def _create_csv_parse_options(self) -> pacsv.ParseOptions:
+        return pacsv.ParseOptions(
+            delimiter="\t",
+            quote_char=False,
+            invalid_row_handler=lambda row: "skip"
+        )
+
+    def _create_csv_convert_options(self) -> pacsv.ConvertOptions:
+        return pacsv.ConvertOptions(
+            column_types={
+                "f0": pa.string(),
+                "f1": pa.string(),
+                "f2": pa.int64()
+            },
+            include_columns=["f0", "f1", "f2"]
+        )
+
+    def _create_csv_read_options(self) -> pacsv.ReadOptions:
+        return pacsv.ReadOptions(
+            autogenerate_column_names=True,
+            block_size=10 * 1024 * 1024  # Continuous 10MB chunk pipeline buffer
         )
 
     def _empty_output_dir(self) -> None:
@@ -96,62 +107,11 @@ class AgeoffWriter:
                 return
             logger.error("Failed to clean output dir '%s', %s", self._output_dir, err)
 
-    def _write_stream(self, stream: io.BufferedReader) -> int:
-        logger.info("Writing output stream to '%s' using native pre-tabbed C++ parser...", self._output_dir)
-
-        # -------------------------------------------------------------------------
-        # PHASE 1 & 2: Data Stream Consumption via Pre-Allocated Configs
-        # -------------------------------------------------------------------------
-        global_table = pacsv.read_csv(
-            stream,
-            read_options=self._csv_read_options,
-            parse_options=self._csv_parse_options,
-            convert_options=self._csv_convert_options
-        )
-        
-        if global_table.num_rows == 0:
-            logger.info("No logs present in source find stream.")
-            return 0
-
-        # Reconstruct columns directly to match the pre-defined target schema layout.
-        # Since 'f0' is already YYYY-MM-DD from stat, we pass it straight through.
-        global_table = pa.Table.from_arrays(
-            [global_table.column("f1"), global_table.column("f2"), global_table.column("f0")],
-            schema=self._schema
-        )
-
-        # -------------------------------------------------------------------------
-        # PHASE 4: Hierarchical Multi-Key C++ Memory Sort (Sorting Individual Files)
-        # -------------------------------------------------------------------------
-        logger.info("Performing global hierarchical sort on %d records by date, then path...", global_table.num_rows)
-        global_table = global_table.sort_by([
-            ("modified_date", "ascending"),
-            ("path", "ascending")
-        ])
-
-        # -------------------------------------------------------------------------
-        # PHASE 5: Stream Zero-Copy Native Table Slices to S3
-        # -------------------------------------------------------------------------
-        total_processed = global_table.num_rows
-        part_index = 0
-        
-        for offset in range(0, total_processed, self._config.batch_size):
-            slice_chunk = global_table.slice(offset, self._config.batch_size)
-            self._stage_file_part_table(part_index, slice_chunk)
-            part_index += 1
-
-        # -------------------------------------------------------------------------
-        # STEP 3: Generate Global JSON Summary Metrics (No Sorting on Summary)
-        # -------------------------------------------------------------------------
-        self._write_global_json_summary(global_table)            
-
-        return total_processed
-
     def _write_global_json_summary(self, global_table: pa.Table) -> None:
         """Computes total dataset metrics and flushes them to a JSON file on MinIO."""
         logger.info("Generating global dataset JSON summary file...")
         
-        # Calculate totals natively in C++ memory across the unsorted table
+        # Calculate totals natively in C++ memory across the table (Static lookup, O(1) property)
         total_records = global_table.num_rows
         combined_size = pc.sum(global_table.column("size_bytes")).as_py()
 
@@ -174,6 +134,39 @@ class AgeoffWriter:
         self._active_streams.append(s3_file)
         self._active_writers.append(s3_file)
 
+    def _ingest_stream(self, stream) -> pa.Table | None:
+        global_table = pacsv.read_csv(
+            stream,
+            read_options=self._csv_read_options,
+            parse_options=self._csv_parse_options,
+            convert_options=self._csv_convert_options
+        )
+        
+        if global_table.num_rows == 0:
+            return None
+
+        # Reconstruct columns directly to match the pre-defined target schema layout.
+        return pa.Table.from_arrays(
+            [global_table.column("f1"), global_table.column("f2"), global_table.column("f0")],
+            schema=self._schema
+        )
+
+    def _sort_files(self, global_table) -> any:
+        logger.info("Performing global hierarchical sort on %d records by date, then path...", global_table.num_rows)
+        return global_table.sort_by([
+            ("modified_date", "ascending"),
+            ("path", "ascending")
+        ])
+
+    def _write_file_parts(self, global_table) -> None:
+        total_processed = global_table.num_rows
+        part_index = 0
+        
+        for offset in range(0, total_processed, self._config.batch_size):
+            slice_chunk = global_table.slice(offset, self._config.batch_size)
+            self._stage_file_part_table(part_index, slice_chunk)
+            part_index += 1
+
     def _stage_file_part_table(self, part_index: int, table_chunk: pa.Table) -> None:
         """Instantiates a multipart stream handle and writes a sorted PyArrow Table slice natively."""
         file_id = uuid.uuid4().hex
@@ -191,7 +184,7 @@ class AgeoffWriter:
 
     def _commit(self, total_processed: int) -> None:
         """Appends Parquet footers and executes CompleteMultipartUpload on all files."""
-        logger.info("Committing transaction. Completing all uncommitted multipart chuks for '%s'",
+        logger.info("Committing transaction. Completing all uncommitted multipart chunks for '%s'",
             self._output_dir)
         total_parts = len(self._active_streams)
         for writer in self._active_writers:
@@ -204,8 +197,8 @@ class AgeoffWriter:
 
     def _rollback(self, error: Exception) -> None:
         """Aborts all active multipart streams, cleaning up uncommitted chunks on MinIO."""
-        logger.info("Aboring transaction. Purging all uncommitted multipart chunks for '%s', %s",
-            self._output_dir, self._output_dir)
+        logger.info("Aborting transaction. Purging all uncommitted multipart chunks for '%s', %s",
+            self._output_dir, error)
         for writer in self._active_writers:
             try:
                 if hasattr(writer, 'close') and writer is not self._active_streams:
