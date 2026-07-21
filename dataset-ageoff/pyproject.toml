@@ -19,3 +19,4 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 dataset-ageoff = "dataset_ageoff.cli:cli"
+object-ageoff = "object_ageoff.cli:cli"
