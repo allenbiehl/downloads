@@ -1,0 +1,21 @@
+[project]
+name = "dataset-ageoff"
+version = "0.1.0"
+description = ""
+authors = []
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "argparse",
+    "click (>=8.2.1,<9.0.0)",
+    "pyarrow",
+    "pyyaml",
+    "s3fs"
+]
+
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+dataset-ageoff = "dataset_ageoff.cli:cli"

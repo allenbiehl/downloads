@@ -1,0 +1,10 @@
+s3_access_key: "admin"
+s3_secret_key: "password"
+s3_endpoint_override: "localhost:9020"
+s3_scheme: "http"
+s3_force_virtual_addressing: False
+s3_region: "us-east-1"
+s3_bucket: corporate-lifecycle-audit-reporting
+s3_prefix: ageoff/period/
+max_workers: 2
+batch_size: 3000000
